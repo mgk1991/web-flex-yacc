@@ -1,0 +1,14 @@
+services:
+  web-lex-yacc:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    container_name: web-lex-yacc
+    ports:
+      - 7681:7681    # Web terminal access port
+    networks:
+      - web-lex-yacc # Isolated network for the service
+
+networks:
+  web-lex-yacc:
+    name: web-lex-yacc
