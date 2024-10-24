@@ -69,7 +69,8 @@ RUN apk add --no-cache \
     ncurses \
     libevent \
     build-base \
-    shadow
+    shadow \
+    sudo
 
 # Copy compiled binaries and libraries
 COPY --from=builder /usr/local/bin/ttyd /usr/local/bin/
@@ -91,13 +92,14 @@ RUN bash --version && \
     which rz && \
     which sz
 
-# Create non-root user
-RUN adduser -D -u 1000 ttyd && \
-    addgroup ttyd wheel
-
-# Create working directory
-RUN mkdir -p /home/ttyd/workspace && \
-    chown -R ttyd:ttyd /home/ttyd
+# Create base group for sessions
+RUN addgroup sessiongroup && \
+    adduser -D -u 2000 ttyd && \
+    addgroup ttyd wheel && \
+    addgroup ttyd sessiongroup && \
+    mkdir -p /home/ttyd/workspace && \
+    chown ttyd:sessiongroup /home/ttyd/workspace && \
+    chmod 755 /home/ttyd/workspace
 
 # Create wrapper scripts for rz and sz
 RUN echo '#!/bin/bash' > /usr/local/bin/rz-wrapper.sh && \
@@ -109,24 +111,33 @@ RUN echo '#!/bin/bash' > /usr/local/bin/rz-wrapper.sh && \
     chmod 755 /usr/local/bin/rz-wrapper.sh && \
     chmod 755 /usr/local/bin/sz-wrapper.sh
 
-# Script to create unique temporary directory per session
+# Script to create unique temporary directory and user per session
 RUN echo '#!/bin/bash' > /usr/local/bin/new-session.sh && \
-    echo 'SESSION_DIR=$(mktemp -d -p /home/ttyd/workspace)' >> /usr/local/bin/new-session.sh && \
-    echo 'echo "Welcome to Web Flex & YACC/Bison Development Environment"' >> /usr/local/bin/new-session.sh && \
+    echo 'SESSION_ID=$(head /dev/urandom | LC_ALL=C tr -dc "a-z0-9" | head -c 8 2>/dev/null)' >> /usr/local/bin/new-session.sh && \
+    echo 'SESS_USER="sess_${SESSION_ID}"' >> /usr/local/bin/new-session.sh && \
+    echo 'adduser -D -G sessiongroup ${SESS_USER}' >> /usr/local/bin/new-session.sh && \
+    echo 'SESSION_DIR="/home/ttyd/workspace/${SESS_USER}"' >> /usr/local/bin/new-session.sh && \
+    echo 'mkdir -p "${SESSION_DIR}"' >> /usr/local/bin/new-session.sh && \
+    echo 'chown ${SESS_USER}:sessiongroup "${SESSION_DIR}"' >> /usr/local/bin/new-session.sh && \
+    echo 'chmod 700 "${SESSION_DIR}"' >> /usr/local/bin/new-session.sh && \
+    echo 'echo "Welcome to Flex/Bison Development Environment"' >> /usr/local/bin/new-session.sh && \
     echo 'echo "File transfer commands:"' >> /usr/local/bin/new-session.sh && \
     echo 'echo " - Use rz to upload files"' >> /usr/local/bin/new-session.sh && \
-    echo 'echo " - Use sz <filename> to download"' >> /usr/local/bin/new-session.sh && \
-    echo 'echo "Uploaded and created files will be available in current directory"' >> /usr/local/bin/new-session.sh && \
-    echo 'echo "NOTE: This is a temporary session. All files will be deleted on close."' >> /usr/local/bin/new-session.sh && \
+    echo 'echo " - Use sz filename to download"' >> /usr/local/bin/new-session.sh && \
+    echo 'echo "Uploaded files will be available in current directory"' >> /usr/local/bin/new-session.sh && \
+    echo 'echo "NOTE: This is a temporary session. All files will be deleted when closed."' >> /usr/local/bin/new-session.sh && \
     echo 'echo "-------------------------------------------"' >> /usr/local/bin/new-session.sh && \
-    echo 'cd "$SESSION_DIR"' >> /usr/local/bin/new-session.sh && \
-    echo 'exec bash' >> /usr/local/bin/new-session.sh && \
+    echo 'cd "${SESSION_DIR}"' >> /usr/local/bin/new-session.sh && \
+    echo 'exec su -s /bin/bash ${SESS_USER}' >> /usr/local/bin/new-session.sh && \
     chmod 755 /usr/local/bin/new-session.sh && \
-    chown ttyd:ttyd /usr/local/bin/new-session.sh
+    chown root:root /usr/local/bin/new-session.sh
 
-# Switch to non-root user
-USER ttyd
-WORKDIR /home/ttyd
+# Configure sudo permissions for user creation
+RUN echo "ttyd ALL=(ALL) NOPASSWD: /usr/sbin/adduser" >> /etc/sudoers && \
+    echo "ttyd ALL=(ALL) NOPASSWD: /bin/su" >> /etc/sudoers
+
+# The script needs root privileges to create users
+USER root
 
 # Configure environment variables
 ENV TERM=xterm-256color
