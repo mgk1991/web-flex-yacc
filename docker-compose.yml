@@ -8,6 +8,7 @@ services:
       - 7681:7681    # Web terminal access port
     networks:
       - web-lex-yacc # Isolated network for the service
+    restart: always
 
 networks:
   web-lex-yacc:
