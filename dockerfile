@@ -97,9 +97,8 @@ RUN addgroup sessiongroup && \
     adduser -D -u 2000 ttyd && \
     addgroup ttyd wheel && \
     addgroup ttyd sessiongroup && \
-    mkdir -p /home/ttyd/workspace && \
-    chown ttyd:sessiongroup /home/ttyd/workspace && \
-    chmod 755 /home/ttyd/workspace
+    chown ttyd:sessiongroup /home && \
+    chmod 755 /home
 
 # Create wrapper scripts for rz and sz
 RUN echo '#!/bin/bash' > /usr/local/bin/rz-wrapper.sh && \
@@ -115,9 +114,14 @@ RUN echo '#!/bin/bash' > /usr/local/bin/rz-wrapper.sh && \
 RUN echo '#!/bin/bash' > /usr/local/bin/new-session.sh && \
     echo 'SESSION_ID=$(head /dev/urandom | LC_ALL=C tr -dc "a-z0-9" | head -c 8 2>/dev/null)' >> /usr/local/bin/new-session.sh && \
     echo 'SESS_USER="sess_${SESSION_ID}"' >> /usr/local/bin/new-session.sh && \
+    echo 'SESSION_DIR="/home/${SESS_USER}"' >> /usr/local/bin/new-session.sh && \
+    echo 'cleanup() {' >> /usr/local/bin/new-session.sh && \
+    echo '    cd /home' >> /usr/local/bin/new-session.sh && \
+    echo '    sudo rm -rf "${SESSION_DIR}"' >> /usr/local/bin/new-session.sh && \
+    echo '    sudo deluser ${SESS_USER}' >> /usr/local/bin/new-session.sh && \
+    echo '}' >> /usr/local/bin/new-session.sh && \
+    echo 'trap cleanup EXIT' >> /usr/local/bin/new-session.sh && \
     echo 'adduser -D -G sessiongroup ${SESS_USER}' >> /usr/local/bin/new-session.sh && \
-    echo 'SESSION_DIR="/home/ttyd/workspace/${SESS_USER}"' >> /usr/local/bin/new-session.sh && \
-    echo 'mkdir -p "${SESSION_DIR}"' >> /usr/local/bin/new-session.sh && \
     echo 'chown ${SESS_USER}:sessiongroup "${SESSION_DIR}"' >> /usr/local/bin/new-session.sh && \
     echo 'chmod 700 "${SESSION_DIR}"' >> /usr/local/bin/new-session.sh && \
     echo 'echo "Welcome to Flex/Bison Development Environment"' >> /usr/local/bin/new-session.sh && \
@@ -128,13 +132,15 @@ RUN echo '#!/bin/bash' > /usr/local/bin/new-session.sh && \
     echo 'echo "NOTE: This is a temporary session. All files will be deleted when closed."' >> /usr/local/bin/new-session.sh && \
     echo 'echo "-------------------------------------------"' >> /usr/local/bin/new-session.sh && \
     echo 'cd "${SESSION_DIR}"' >> /usr/local/bin/new-session.sh && \
-    echo 'exec su -s /bin/bash ${SESS_USER}' >> /usr/local/bin/new-session.sh && \
+    echo 'su -s /bin/bash ${SESS_USER}' >> /usr/local/bin/new-session.sh && \
     chmod 755 /usr/local/bin/new-session.sh && \
     chown root:root /usr/local/bin/new-session.sh
 
 # Configure sudo permissions for user creation
 RUN echo "ttyd ALL=(ALL) NOPASSWD: /usr/sbin/adduser" >> /etc/sudoers && \
-    echo "ttyd ALL=(ALL) NOPASSWD: /bin/su" >> /etc/sudoers
+    echo "ttyd ALL=(ALL) NOPASSWD: /bin/su" >> /etc/sudoers && \
+    echo "ttyd ALL=(ALL) NOPASSWD: /usr/sbin/deluser" >> /etc/sudoers && \
+    echo "ttyd ALL=(ALL) NOPASSWD: /bin/rm" >> /etc/sudoers
 
 # The script needs root privileges to create users
 USER root
